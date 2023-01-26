@@ -13,6 +13,9 @@ app = Flask(__name__)
 CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 
+from .app.routes.nyt_routes import nyt_bp
+app.register_blueprint(nyt_bp)
+
 #Connect to firebase
 cred = credentials.Certificate('fbAdminConfig.json')
 firebase = firebase_admin.initialize_app(cred)
@@ -41,7 +44,7 @@ def check_token(f):
 def get_userinfo():
   return {'data':users}, 200
 
-
+# https://medium.com/@nschairer/flask-api-authentication-with-firebase-9affc7b64715
 @app.route('/api/signup', methods=['POST'])
 def signup():
   request_body = request.get_json()
@@ -65,7 +68,7 @@ def signup():
   except:
     return {'message': 'Error creating user'},400
 
-# https://medium.com/@nschairer/flask-api-authentication-with-firebase-9affc7b64715
+
 @app.route('/api/login', methods=['POST'])
 def login():
   request_body = request.get_json()
@@ -74,7 +77,6 @@ def login():
 
   try:
     user = pb.auth().sign_in_with_email_and_password(email, password)
-    print(user)
     return user, 200
 
   except:
