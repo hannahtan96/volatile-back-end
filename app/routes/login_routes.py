@@ -3,16 +3,22 @@ import firebase_admin
 import pyrebase
 import json
 
-from firebase_admin import credentials, auth
+from firebase_admin import credentials, auth, firestore
 from flask import Blueprint, Flask, request, jsonify
 from flask_cors import CORS
+from datetime import date
+
+from .nyt_routes import get_position_sentiment
 
 #Connect to firebase
 cred = credentials.Certificate('./fbAdminConfig.json')
 firebase = firebase_admin.initialize_app(cred)
 pb = pyrebase.initialize_app(json.load(open('./fbConfig.json')))
 
-users = [{'user_id': 1, 'first_name': 'Hannah', 'last_name': 'Tan'}]
+db = firestore.client()
+position_ref = db.collection("position")
+
+# users = [{'user_id': 1, 'first_name': 'Hannah', 'last_name': 'Tan'}]
 
 login_bp = Blueprint("login_bp", __name__, url_prefix='/api')
 
@@ -32,10 +38,34 @@ def check_token(f):
   return wrap
 
 
-@login_bp.route('/userinfo', methods=['POST'])
+@login_bp.route('/<user_id>', methods=['GET'])
 @check_token
 def get_userinfo():
-  return {'data':users}, 200
+
+  pass
+
+@login_bp.route('', methods=['GET'])
+def find_position():
+  stock = 'Microsoft'
+  ticker = 'MSFT'
+  articles = 2
+  today = date.today().strftime('%Y%m%d')
+
+  try:
+      position = get_position_sentiment(stock, ticker, articles)
+      # print(type(response))
+      # position = json.loads(response)
+      print(type(position))
+      bespoke_id = today + "_" + ticker
+      # id = position['']
+      # position_ref.document(id).set(request.json)
+      db.collection('positions').document(bespoke_id).set(position)
+      return jsonify({"success": True}), 200
+  except Exception as e:
+      return f"An Error Occurred: {e}"
+
+
+
 
 # https://medium.com/@nschairer/flask-api-authentication-with-firebase-9affc7b64715
 @login_bp.route('/signup', methods=['POST'])
