@@ -61,7 +61,7 @@ def get_position_sentiment(stock_query, ticker_query, articles):
       data = json.loads(response.content.decode('utf-8'))
 
       for art in data['response']['docs']:
-        if re.search(stock_or_ticker, art['headline']['main']) or re.search(stock_or_ticker, art['abstract']) or re.search(stock_or_ticker, art['snippet']):
+        if re.search(stock_or_ticker, art['headline']['main']) or re.search(stock_or_ticker, art['abstract']):
           article = {
             "abstract": art['abstract'],
             "web_url": art['web_url'],

@@ -2,105 +2,207 @@ from functools import wraps
 import firebase_admin
 import pyrebase
 import json
+import os
+import requests
 
 from firebase_admin import credentials, auth, firestore
-from flask import Blueprint, Flask, request, jsonify
+from flask import Blueprint, Flask, jsonify, request, redirect, request, url_for
 from flask_cors import CORS
 from datetime import date
 
-from .nyt_routes import get_position_sentiment
+# from .nyt_routes import get_position_sentiment
 
-#Connect to firebase
+# Connect to firebase
 cred = credentials.Certificate('./fbAdminConfig.json')
 firebase = firebase_admin.initialize_app(cred)
 pb = pyrebase.initialize_app(json.load(open('./fbConfig.json')))
 
 db = firestore.client()
-position_ref = db.collection("position")
+positions_ref = db.collection("positions")
+users_portfolios_ref = db.collection("users")
 
-# users = [{'user_id': 1, 'first_name': 'Hannah', 'last_name': 'Tan'}]
+AA_KEY = os.environ.get("ALPHA_ADVANTAGE_API_KEY")
+AA_URL = 'https://www.alphavantage.co/query?'
+
 
 login_bp = Blueprint("login_bp", __name__, url_prefix='/api')
 
+
 def check_token(f):
-  @wraps(f)
-  def wrap(*args,**kwargs):
-    if not request.headers.get_json()['authorization']:
-      return {'message': 'No token provided'}, 400
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        # print(request.headers)
+        idToken = request.headers.get('Authorization')
+        if not idToken:
+            return {'message': 'No token provided'}, 400
+
+        try:
+            decoded_token = auth.verify_id_token(idToken)
+            uid = decoded_token['uid']
+            user = auth.get_user(uid)
+            request.user = user
+        except:
+            return {'message': 'Invalid token provided'}, 400
+        return f(*args, **kwargs)
+
+    return wrap
+
+
+@login_bp.route('/portfolio/new', methods=['POST'])
+@check_token
+def add_user_portfolio():
+    print('in add_user_portfolio')
+    request_body = request.get_json()
+    user = request_body['user']
+    email = request_body['email']
+    localId = request_body['localId']
+    portfolio = [(key.upper(), int(value)) for (key, value) in request_body['portfolio']]
+
+    if email is None or email is None or localId is None or portfolio is None:
+        return {'message': 'Error - missing user portfolio data'}, 400
 
     try:
-      user = auth.verify_id_token(request.header['authorization'])
-      request.user = user
-    except:
-      return {'message': 'Invalid token provided'}, 400
-    return f(*args,**kwargs)
-
-  return wrap
+        print("in add_user_portfolio")
+        users_portfolios_ref.document(localId).set(request_body)
+        return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
+    except Exception as e:
+        return f"An Error Occurred: {e}"
 
 
-@login_bp.route('/<user_id>', methods=['GET'])
+@login_bp.route('/portfolio/<localId>', methods=['GET'])
 @check_token
-def get_userinfo():
+def get_user_portfolio(localId):
+    try:
+        doc_ref = users_portfolios_ref.document(localId)
+        doc = doc_ref.get()
+        if doc.exists:
+            print("doc does exist")
+            return jsonify(doc.to_dict()), 200
+        else:
+            return jsonify({}), 200
 
-  pass
+    except Exception as e:
+        return f"An Error Occurred: {e}"
+
+# HELPER FUNCTION
+@login_bp.route('/portfolio/<localId>/tickers', methods=['GET'])
+@check_token
+def get_tickers(localId):
+
+    try:
+        doc_ref = users_portfolios_ref.document(localId)
+        doc = doc_ref.get()
+        if doc.exists:
+            print("doc does exist")
+
+            return_arr = []
+            for holding in doc.to_dict()['portfolio']:
+              print(holding)
+              data = verify_ticker(holding["ticker"])["Global Quote"]
+              data["11. my shares"] = holding["shares"]
+              return_arr.append(data)
+
+            # print(return_arr)
+            return jsonify({"weightings": return_arr}), 200
+        else:
+            return jsonify({}), 200
+
+    except requests.exceptions.RequestException as e:
+        return(e)
+
+
+def verify_ticker(ticker):
+    try:
+        # params = {"apikey": AA_KEY, "function": "TIME_SERIES_DAILY_ADJUSTED", "symbol": ticker, "datatype": "json", "outputsize": "compact"}
+        response = requests.get(
+            AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
+            # params=params
+        )
+        data = json.loads(response.content.decode('utf-8'))
+        return data
+    except requests.exceptions.RequestException as e:
+        return(e)
 
 @login_bp.route('', methods=['GET'])
-def find_position():
-  stock = 'Microsoft'
-  ticker = 'MSFT'
-  articles = 2
-  today = date.today().strftime('%Y%m%d')
+@check_token
+def read_position():
+    stock = "Netflix"
+    ticker = "NFLX"
+    articles = 10
+    today = date.today().strftime('%Y%m%d')
+    bespoke_id = today + "_" + ticker
 
-  try:
-      position = get_position_sentiment(stock, ticker, articles)
-      # print(type(response))
-      # position = json.loads(response)
-      print(type(position))
-      bespoke_id = today + "_" + ticker
-      # id = position['']
-      # position_ref.document(id).set(request.json)
-      db.collection('positions').document(bespoke_id).set(position)
-      return jsonify({"success": True}), 200
-  except Exception as e:
-      return f"An Error Occurred: {e}"
+    try:
+        doc_ref = positions_ref.document(bespoke_id)
+        doc = doc_ref.get()
+        if doc.exists:
+            print("doc does exist")
+            return jsonify(doc.to_dict()), 200
+        else:
+            print("doc does not exist, so we will make it")
+            response = create_position(stock, ticker, articles, today)
+            print(response)
+            if response["status_code"] == 200:
+                new_doc = positions_ref.document(bespoke_id).get()
+                return jsonify(new_doc.to_dict()), 200
+
+    except Exception as e:
+        return f"An Error Occurred: {e}"
 
 
+#  HELPER FUNCTION
+def create_position(stock, ticker, articles, today):
+    try:
+        print("in create_position")
+        position = get_position_sentiment(stock, ticker, articles)
+        # print(type(response))
+        # position = json.loads(response)
+        print(type(position))
+        bespoke_id = today + "_" + ticker
+        # id = position['']
+        # position_ref.document(id).set(request.json)
+        positions_ref.document(bespoke_id).set(position)
+        return {"success": True, "status_code": 200}
+    except Exception as e:
+        return f"An Error Occurred: {e}"
 
 
 # https://medium.com/@nschairer/flask-api-authentication-with-firebase-9affc7b64715
 @login_bp.route('/signup', methods=['POST'])
 def signup():
-  request_body = request.get_json()
-  first_name = request_body['firstName']
-  last_name = request_body['lastName']
-  username = request_body['username']
-  email = request_body['email']
-  password = request_body['password']
+    request_body = request.get_json()
+    first_name = request_body['firstName']
+    last_name = request_body['lastName']
+    username = request_body['username']
+    email = request_body['email']
+    password = request_body['password']
 
-  if email is None or password is None:
-    return {'message': 'Error - missing email or password'}, 400
+    if email is None or password is None:
+        return {'message': 'Error - missing email or password'}, 400
 
-  try:
-    user = auth.create_user(
-      password=password,
-      email=email,
-      display_name=username,
-      disabled=False
-    )
-    return {'message':'Successful registration, please navigate to the Login page!', 'user_id': f'{user.uid}'}, 200
-  except:
-    return {'message': 'Error creating user'},400
+    try:
+        user = auth.create_user(
+            password=password,
+            email=email,
+            display_name=username,
+            disabled=False
+        )
+        return {'message': 'Successful registration, please navigate to the Login page!', 'user_id': f'{user.uid}'}, 200
+    except:
+        return {'message': 'Error creating user'}, 400
 
 
 @login_bp.route('/login', methods=['POST'])
 def login():
-  request_body = request.get_json()
-  email = request_body['email']
-  password = request_body['password']
+    request_body = request.get_json()
+    email = request_body['email']
+    password = request_body['password']
 
-  try:
-    user = pb.auth().sign_in_with_email_and_password(email, password)
-    return user, 200
+    try:
+        user = pb.auth().sign_in_with_email_and_password(email, password)
+        # jwt = user['idToken']
+        # return jsonify({'user': user, 'accessToken': jwt}), 200
+        return user, 200
 
-  except:
-    return {'message': 'Incorrect email or password.'}, 400
+    except:
+        return {'message': 'Incorrect email or password.'}, 400

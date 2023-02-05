@@ -6,7 +6,7 @@ from flask_cors import CORS
 
 def create_app():
     app = Flask(__name__)
-    cred = credentials.Certificate('../fbAdminconfig.json')
+    # cred = credentials.Certificate('../fbAdminconfig.json')
     # databaseURL = {'databaseURL': 'https://volatile-d40b6-default-rtdb.firebaseio.com'}
     # default_app = initialize_app(cred)
 

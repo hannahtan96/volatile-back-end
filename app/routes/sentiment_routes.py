@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify, json
 from dotenv import load_dotenv
 from flatten_json import flatten
 from pandas import json_normalize, DataFrame
+from time import sleep
 
 load_dotenv()
 
@@ -18,15 +19,16 @@ SENTIMENT_URL = 'https://api.meaningcloud.com/sentiment-2.1'
 CONFIDENCE_CUTOFF = 90
 
 # @sentiment_bp.route('', methods=['GET'])
-def get_sentiment(text):
+def get_sentiment(text_input):
   # text = request.get_json()["text"]
   params = {
       'key': SENTIMENT_KEY,
-      'txt': text,
+      'txt': text_input,
       'lang': "en"
   }
 
   try:
+    sleep(1)
     response = requests.post(
       SENTIMENT_URL,
       data=params
@@ -36,8 +38,9 @@ def get_sentiment(text):
     print(e)
 
   text = response.json()
+  print(text)
 
-  if text["agreement"] == "DISAGREEMENT" or int(text["confidence"]) < CONFIDENCE_CUTOFF:
+  if text["agreement"] == "DISAGREEMENT" or text["score_tag"] == "NONE" or int(text["confidence"]) < CONFIDENCE_CUTOFF:
     return False, False
 
   sentiment_headline = {
@@ -51,6 +54,17 @@ def get_sentiment(text):
 
   return sentiment_headline, sentiment
 
+def remove_beg_end_punctuation(s):
+  i, j = 0, 0
+  while not s[i].isalnum():
+    i += 1
+
+  s = s[i:][::-1]
+  while not s[j].isalnum():
+    j += 1
+
+  return s[j:][::-1]
+
 # @sentiment_bp.route('/flatten', methods=['GET'])
 def flatten_json(input):
   flattened_json = flatten(input)
@@ -62,12 +76,12 @@ def flatten_json(input):
   for text in texts:
     if text[:len(text)-4]+'score_tag' in flattened_json and text[:len(text)-4]+'confidence' in flattened_json:
       text_sentiment = {
-        "text": flattened_json[text].rstrip("."),
+        "text": remove_beg_end_punctuation(flattened_json[text]),
         "score_tag": flattened_json[text[:len(text)-4]+'score_tag'],
         "confidence": flattened_json[text[:len(text)-4]+'confidence'],
       }
 
-      if text_sentiment["text"] not in keys and int(text_sentiment["confidence"]) >= CONFIDENCE_CUTOFF:
+      if text_sentiment["text"] not in keys and int(text_sentiment["confidence"]) >= CONFIDENCE_CUTOFF and text_sentiment["score_tag"] != "NONE":
         output.append(text_sentiment)
         keys.add(text_sentiment["text"])
 
@@ -81,7 +95,7 @@ def flatten_json(input):
     res = [m.start() for m in re.finditer(list_name, form)][-1]
 
     form_sentiment = {
-      "text" : flattened_json[form].rstrip("."),
+      "text" : remove_beg_end_punctuation(flattened_json[form]),
       "confidence": flattened_json[form[:res]+'confidence'],
       # "overall_score_tag": flattened_json[form[:res]+'score_tag'],
       "score_tag": flattened_json[form[:len(form)-4]+'score_tag']
@@ -101,7 +115,7 @@ def flatten_json(input):
 def return_sentiment(text):
 
   if text["agreement"] == "DISAGREEMENT":
-    return None
+    return False
 
   sentiment = {
     "text": text["sentence_list"][0]["text"],
