@@ -56,10 +56,30 @@ def add_user_portfolio():
     user = request_body['user']
     email = request_body['email']
     localId = request_body['localId']
-    portfolio = [(key.upper(), int(value)) for (key, value) in request_body['portfolio']]
+    portfolio = request_body['portfolio']
+    print(portfolio)
 
     if email is None or email is None or localId is None or portfolio is None:
         return {'message': 'Error - missing user portfolio data'}, 400
+
+    portfolio_detail = []
+    error_detail = []
+    for holding in portfolio:
+      try:
+        data = validate_ticker(holding["ticker"])["bestMatches"][0]
+        print(data)
+        n_data = {}
+        n_data["ticker"] = data["1. symbol"]
+        n_data["name"] = data["2. name"]
+        n_data["shares"] = int(holding["shares"])
+        portfolio_detail.append(n_data)
+      except:
+        error_detail.append(holding["ticker"])
+
+    request_body["portfolio"] = portfolio_detail
+
+    if error_detail:
+      return jsonify({"non-existent tickers": ", ".join(error_detail)})
 
     try:
         print("in add_user_portfolio")
@@ -85,6 +105,18 @@ def get_user_portfolio(localId):
         return f"An Error Occurred: {e}"
 
 # HELPER FUNCTION
+def validate_ticker(ticker):
+  try:
+      # ticker = request.get_json()['ticker']
+      response = requests.get(
+          AA_URL + f'apikey={AA_KEY}&function=SYMBOL_SEARCH&keywords={ticker}'
+      )
+      data = json.loads(response.content.decode('utf-8'))
+      return data
+  except requests.exceptions.RequestException as e:
+      return(e)
+
+
 @login_bp.route('/portfolio/<localId>/tickers', methods=['GET'])
 @check_token
 def get_tickers(localId):
@@ -96,13 +128,20 @@ def get_tickers(localId):
             print("doc does exist")
 
             return_arr = []
-            for holding in doc.to_dict()['portfolio']:
-              print(holding)
-              data = verify_ticker(holding["ticker"])["Global Quote"]
-              data["11. my shares"] = holding["shares"]
-              return_arr.append(data)
+            portfolio_dict = doc.to_dict()["portfolio"]
 
-            # print(return_arr)
+            for holding in portfolio_dict:
+
+                data = verify_ticker(holding["ticker"])
+                # ["Global Quote"]
+                data["11. shares"] = holding["shares"]
+                data["13. name"] = holding["name"]
+                return_arr.append(data)
+
+            total_weight = sum([(float(w['02. open'])*w['11. shares']) for w in return_arr])
+            for holding in return_arr:
+                holding["12. proportion"] = ((float(holding["02. open"])*holding["11. shares"]) / total_weight)
+
             return jsonify({"weightings": return_arr}), 200
         else:
             return jsonify({}), 200
@@ -113,13 +152,12 @@ def get_tickers(localId):
 
 def verify_ticker(ticker):
     try:
-        # params = {"apikey": AA_KEY, "function": "TIME_SERIES_DAILY_ADJUSTED", "symbol": ticker, "datatype": "json", "outputsize": "compact"}
         response = requests.get(
             AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
-            # params=params
         )
         data = json.loads(response.content.decode('utf-8'))
-        return data
+        print(data)
+        return data["Global Quote"]
     except requests.exceptions.RequestException as e:
         return(e)
 
