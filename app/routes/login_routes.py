@@ -10,6 +10,8 @@ from flask import Blueprint, Flask, jsonify, request, redirect, request, url_for
 from flask_cors import CORS
 from datetime import date
 
+from .nyt_routes import get_position_sentiment
+
 # from .nyt_routes import get_position_sentiment
 
 # Connect to firebase
@@ -47,7 +49,7 @@ def check_token(f):
 
     return wrap
 
-
+# ENDPOINT
 @login_bp.route('/portfolio/new', methods=['POST'])
 @check_token
 def add_user_portfolio():
@@ -88,7 +90,50 @@ def add_user_portfolio():
     except Exception as e:
         return f"An Error Occurred: {e}"
 
+# ENDPOINT
+@login_bp.route('/portfolio/<localId>/edit', methods=['POST'])
+@check_token
+def edit_user_portfolio(localId):
+    request_body = request.get_json()
+    # print(request_body)
 
+    t = request_body["data"]["ticker"]
+    s = int(request_body["data"]["shares"])
+
+    try:
+        doc_ref = users_portfolios_ref.document(localId)
+        doc = doc_ref.get()
+
+        portfolio_dict = doc.to_dict()["portfolio"]
+        curr_holding = [holding for holding in portfolio_dict if holding["ticker"] == t]
+
+        if curr_holding:
+          doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
+
+    except Exception as e:
+        return f"An Error Occurred: {e}"
+
+    try:
+        if s:
+          data = validate_ticker(t)["bestMatches"][0]
+          n_data = {}
+          n_data["ticker"] = data["1. symbol"]
+          n_data["name"] = data["2. name"]
+          n_data["shares"] = s
+
+    except Exception as e:
+        return f"An Error Occurred: {e}"
+
+    try:
+        if s:
+          doc_ref = users_portfolios_ref.document(localId)
+          doc_ref.update({'portfolio': firestore.ArrayUnion([n_data])})
+          return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
+
+    except Exception as e:
+        return f"An Error Occurred: {e}"
+
+# ENDPOINT
 @login_bp.route('/portfolio/<localId>', methods=['GET'])
 @check_token
 def get_user_portfolio(localId):
@@ -104,7 +149,7 @@ def get_user_portfolio(localId):
     except Exception as e:
         return f"An Error Occurred: {e}"
 
-# HELPER FUNCTION
+# HELPER
 def validate_ticker(ticker):
   try:
       # ticker = request.get_json()['ticker']
@@ -116,7 +161,7 @@ def validate_ticker(ticker):
   except requests.exceptions.RequestException as e:
       return(e)
 
-
+# HELPER
 @login_bp.route('/portfolio/<localId>/tickers', methods=['GET'])
 @check_token
 def get_tickers(localId):
@@ -149,7 +194,7 @@ def get_tickers(localId):
     except requests.exceptions.RequestException as e:
         return(e)
 
-
+# HELPER
 def verify_ticker(ticker):
     try:
         response = requests.get(
@@ -161,12 +206,34 @@ def verify_ticker(ticker):
     except requests.exceptions.RequestException as e:
         return(e)
 
-@login_bp.route('', methods=['GET'])
+# ENDPOINT
+@login_bp.route('/sentiments', methods=['POST'])
 @check_token
-def read_position():
-    stock = "Netflix"
-    ticker = "NFLX"
-    articles = 10
+def read_positions():
+    request_body = request.get_json()
+    portfolio = request_body["portfolio"]
+    print(portfolio)
+    num_holdings = len(portfolio)
+
+    positions = []
+    for holding in portfolio:
+      print(holding)
+      holding_sentiment = read_position(holding["name"],holding["ticker"])
+      if isinstance(holding_sentiment, str):
+        break
+      # print(holding_sentiment)
+      positions.append(holding_sentiment)
+
+    if len(positions) != num_holdings:
+      return jsonify({"message": "error in finding sentiments"}), 400
+
+    return jsonify({"portfolio": positions}), 200
+
+# HELPER
+def read_position(stock, ticker):
+    # stock = "Netflix"
+    # ticker = "NFLX"
+    articles = 7
     today = date.today().strftime('%Y%m%d')
     bespoke_id = today + "_" + ticker
 
@@ -175,37 +242,35 @@ def read_position():
         doc = doc_ref.get()
         if doc.exists:
             print("doc does exist")
-            return jsonify(doc.to_dict()), 200
+            return doc.to_dict()
         else:
-            print("doc does not exist, so we will make it")
+            print(f"{ticker} does not exist, so we will make it")
             response = create_position(stock, ticker, articles, today)
-            print(response)
+            # print(response)
             if response["status_code"] == 200:
                 new_doc = positions_ref.document(bespoke_id).get()
-                return jsonify(new_doc.to_dict()), 200
+                return new_doc.to_dict()
 
     except Exception as e:
-        return f"An Error Occurred: {e}"
+        return f"read_position Error Occurred: {e}"
 
-
-#  HELPER FUNCTION
+#  HELPER
 def create_position(stock, ticker, articles, today):
     try:
         print("in create_position")
         position = get_position_sentiment(stock, ticker, articles)
-        # print(type(response))
-        # position = json.loads(response)
-        print(type(position))
+        # print(position)
         bespoke_id = today + "_" + ticker
         # id = position['']
         # position_ref.document(id).set(request.json)
         positions_ref.document(bespoke_id).set(position)
         return {"success": True, "status_code": 200}
     except Exception as e:
-        return f"An Error Occurred: {e}"
+        return f"create_position Error Occurred: {e}"
 
 
 # https://medium.com/@nschairer/flask-api-authentication-with-firebase-9affc7b64715
+# ENDPOINT
 @login_bp.route('/signup', methods=['POST'])
 def signup():
     request_body = request.get_json()
@@ -229,7 +294,7 @@ def signup():
     except:
         return {'message': 'Error creating user'}, 400
 
-
+# ENDPOINT
 @login_bp.route('/login', methods=['POST'])
 def login():
     request_body = request.get_json()
