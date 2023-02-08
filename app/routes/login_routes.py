@@ -51,7 +51,7 @@ def check_token(f):
 # HELPER
 def read_position(stock, ticker):
 	print(f'reading position for {stock}')
-	articles = 7
+	articles = 10
 	today = date.today().strftime('%Y%m%d')
 	bespoke_id = today + "_" + ticker
 
@@ -88,15 +88,18 @@ def create_position(stock, ticker, articles, today):
 
 # HELPER
 def verify_ticker(ticker):
-    try:
-        response = requests.get(
-            AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
-        )
-        data = json.loads(response.content.decode('utf-8'))
-        print(data)
-        return data["Global Quote"]
-    except requests.exceptions.RequestException as e:
-        return(e)
+	print(ticker)
+	try:
+		response = requests.get(
+			AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
+		)
+
+		print(response)
+		data = json.loads(response.content.decode('utf-8'))
+		print(data)
+		return data["Global Quote"]
+	except requests.exceptions.RequestException as e:
+		return(e)
 
 # HELPER
 def validate_ticker(ticker):
@@ -218,33 +221,34 @@ def get_user_portfolio(localId):
 @check_token
 def get_tickers(localId):
 
-    try:
-        doc_ref = users_portfolios_ref.document(localId)
-        doc = doc_ref.get()
-        if doc.exists:
-            print("doc does exist")
+	try:
+		doc_ref = users_portfolios_ref.document(localId)
+		doc = doc_ref.get()
+		if doc.exists:
+			print("doc does exist")
 
-            return_arr = []
-            portfolio_dict = doc.to_dict()["portfolio"]
+			return_arr = []
+			portfolio_dict = doc.to_dict()["portfolio"]
 
-            for holding in portfolio_dict:
+			for holding in portfolio_dict:
+				print(holding)
 
-                data = verify_ticker(holding["ticker"])
-                # ["Global Quote"]
-                data["11. shares"] = holding["shares"]
-                data["13. name"] = holding["name"]
-                return_arr.append(data)
+				data = verify_ticker(holding["ticker"])
+				# ["Global Quote"]
+				data["11. shares"] = holding["shares"]
+				data["13. name"] = holding["name"]
+				return_arr.append(data)
 
-            total_weight = sum([(float(w['02. open'])*w['11. shares']) for w in return_arr])
-            for holding in return_arr:
-                holding["12. proportion"] = ((float(holding["02. open"])*holding["11. shares"]) / total_weight)
+			total_weight = sum([(float(w['02. open'])*w['11. shares']) for w in return_arr])
+			for holding in return_arr:
+				holding["12. proportion"] = ((float(holding["02. open"])*holding["11. shares"]) / total_weight)
 
-            return jsonify({"weightings": return_arr}), 200
-        else:
-            return jsonify({}), 200
+			return jsonify({"weightings": return_arr}), 200
+		else:
+			return jsonify({}), 200
 
-    except requests.exceptions.RequestException as e:
-        return(e)
+	except requests.exceptions.RequestException as e:
+		return(e)
 
 
 # ENDPOINT
