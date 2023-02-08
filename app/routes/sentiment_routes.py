@@ -17,42 +17,6 @@ SENTIMENT_KEY = os.environ.get("MEANING_CLOUD_API_KEY")
 SENTIMENT_URL = 'https://api.meaningcloud.com/sentiment-2.1'
 CONFIDENCE_CUTOFF = 85
 
-# @sentiment_bp.route('', methods=['GET'])
-def get_sentiment(text_input):
-    print(f"in text_input: {text_input}")
-    # text = request.get_json()["text"]
-    params = {
-        'key': SENTIMENT_KEY,
-        'txt': text_input,
-        'lang': "en"
-    }
-
-    try:
-        sleep(1)
-        response = requests.post(
-            SENTIMENT_URL,
-            data=params
-        )
-
-    except requests.exceptions.RequestException as e:
-        print(e)
-
-    text = response.json()
-
-    if text["agreement"] == "DISAGREEMENT" or text["score_tag"] == "NONE" or int(text["confidence"]) < CONFIDENCE_CUTOFF:
-        return False, False
-
-    sentiment_headline = {
-        "text": text["sentence_list"][0]["text"],
-        "confidence": text["confidence"],
-        "irony": text["irony"],
-        "score_tag": text["score_tag"]
-    }
-
-    sentiment = flatten_json(text)
-
-    return sentiment_headline, sentiment
-
 
 def remove_beg_end_punctuation(s):
     i, j = 0, 0
@@ -130,3 +94,40 @@ def return_sentiment(text):
     }
 
     return sentiment
+
+
+# @sentiment_bp.route('', methods=['GET'])
+def get_sentiment(text_input):
+    print(f"in text_input: {text_input}")
+    # text = request.get_json()["text"]
+    params = {
+        'key': SENTIMENT_KEY,
+        'txt': text_input,
+        'lang': "en"
+    }
+
+    try:
+        sleep(1)
+        response = requests.post(
+            SENTIMENT_URL,
+            data=params
+        )
+
+    except requests.exceptions.RequestException as e:
+        print(e)
+
+    text = response.json()
+
+    if text["agreement"] == "DISAGREEMENT" or text["score_tag"] == "NONE" or int(text["confidence"]) < CONFIDENCE_CUTOFF:
+        return False, False
+
+    sentiment_headline = {
+        "text": text["sentence_list"][0]["text"],
+        "confidence": text["confidence"],
+        "irony": text["irony"],
+        "score_tag": text["score_tag"]
+    }
+
+    sentiment = flatten_json(text)
+
+    return sentiment_headline, sentiment

@@ -9,7 +9,6 @@ from firebase_admin import credentials, auth, firestore
 from flask import Blueprint, Flask, jsonify, request, redirect, request, url_for
 from flask_cors import CORS
 from datetime import date
-
 from .nyt_routes import get_position_sentiment
 
 # from .nyt_routes import get_position_sentiment
@@ -49,89 +48,153 @@ def check_token(f):
 
     return wrap
 
+# HELPER
+def read_position(stock, ticker):
+	print(f'reading position for {stock}')
+	articles = 7
+	today = date.today().strftime('%Y%m%d')
+	bespoke_id = today + "_" + ticker
+
+	try:
+		doc_ref = positions_ref.document(bespoke_id)
+		doc = doc_ref.get()
+		if doc.exists:
+			print("doc does exist")
+			return doc.to_dict()
+		else:
+			print(f"{ticker} does not exist, so we will make it")
+			response = create_position(stock, ticker, articles, today)
+			# print(response)
+			if response["status_code"] == 200:
+				new_doc = positions_ref.document(bespoke_id).get()
+				return new_doc.to_dict()
+
+	except Exception as e:
+		return f"read_position Error Occurred: {e}"
+
+#  HELPER
+def create_position(stock, ticker, articles, today):
+    try:
+        print("in create_position")
+        position = get_position_sentiment(stock, ticker, articles)
+        # print(position)
+        bespoke_id = today + "_" + ticker
+        # id = position['']
+        # position_ref.document(id).set(request.json)
+        positions_ref.document(bespoke_id).set(position)
+        return {"success": True, "status_code": 200}
+    except Exception as e:
+        return f"create_position Error Occurred: {e}"
+
+# HELPER
+def verify_ticker(ticker):
+    try:
+        response = requests.get(
+            AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
+        )
+        data = json.loads(response.content.decode('utf-8'))
+        print(data)
+        return data["Global Quote"]
+    except requests.exceptions.RequestException as e:
+        return(e)
+
+# HELPER
+def validate_ticker(ticker):
+	try:
+		# ticker = request.get_json()['ticker']
+		response = requests.get(
+			AA_URL + f'apikey={AA_KEY}&function=SYMBOL_SEARCH&keywords={ticker}'
+		)
+		data = json.loads(response.content.decode('utf-8'))
+		return data
+	except requests.exceptions.RequestException as e:
+		return(e)
+
+
 # ENDPOINT
 @login_bp.route('/portfolio/new', methods=['POST'])
 @check_token
 def add_user_portfolio():
-    print('in add_user_portfolio')
-    request_body = request.get_json()
-    user = request_body['user']
-    email = request_body['email']
-    localId = request_body['localId']
-    portfolio = request_body['portfolio']
-    print(portfolio)
+	print('in add_user_portfolio')
+	request_body = request.get_json()
+	user = request_body['user']
+	email = request_body['email']
+	localId = request_body['localId']
+	portfolio = request_body['portfolio']
+	print(portfolio)
 
-    if email is None or email is None or localId is None or portfolio is None:
-        return {'message': 'Error - missing user portfolio data'}, 400
+	if email is None or email is None or localId is None or portfolio is None:
+		return {'message': 'Error - missing user portfolio data'}, 400
 
-    portfolio_detail = []
-    error_detail = []
-    for holding in portfolio:
-      try:
-        data = validate_ticker(holding["ticker"])["bestMatches"][0]
-        print(data)
-        n_data = {}
-        n_data["ticker"] = data["1. symbol"]
-        n_data["name"] = data["2. name"]
-        n_data["shares"] = int(holding["shares"])
-        portfolio_detail.append(n_data)
-      except:
-        error_detail.append(holding["ticker"])
+	portfolio_detail = []
+	error_detail = []
+	for holding in portfolio:
+		try:
+			data = validate_ticker(holding["ticker"])["bestMatches"][0]
+			print(data)
+			n_data = {}
+			n_data["ticker"] = data["1. symbol"]
+			n_data["name"] = data["2. name"]
+			n_data["shares"] = int(holding["shares"])
+			portfolio_detail.append(n_data)
+		except:
+			error_detail.append(holding["ticker"])
 
-    request_body["portfolio"] = portfolio_detail
+	request_body["portfolio"] = portfolio_detail
 
-    if error_detail:
-      return jsonify({"non-existent tickers": ", ".join(error_detail)})
+	if error_detail:
+		return jsonify({"non-existent tickers": ", ".join(error_detail)})
 
-    try:
-        print("in add_user_portfolio")
-        users_portfolios_ref.document(localId).set(request_body)
-        return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
-    except Exception as e:
-        return f"An Error Occurred: {e}"
+	try:
+		print("in add_user_portfolio")
+		users_portfolios_ref.document(localId).set(request_body)
+		return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
+	except Exception as e:
+		return f"An Error Occurred: {e}"
+
 
 # ENDPOINT
 @login_bp.route('/portfolio/<localId>/edit', methods=['POST'])
 @check_token
 def edit_user_portfolio(localId):
-    request_body = request.get_json()
-    # print(request_body)
+	request_body = request.get_json()
+	# print(request_body)
 
-    t = request_body["data"]["ticker"]
-    s = int(request_body["data"]["shares"])
+	t = request_body["data"]["ticker"]
+	s = int(request_body["data"]["shares"])
 
-    try:
-        doc_ref = users_portfolios_ref.document(localId)
-        doc = doc_ref.get()
+	try:
+		doc_ref = users_portfolios_ref.document(localId)
+		doc = doc_ref.get()
 
-        portfolio_dict = doc.to_dict()["portfolio"]
-        curr_holding = [holding for holding in portfolio_dict if holding["ticker"] == t]
+		portfolio_dict = doc.to_dict()["portfolio"]
+		curr_holding = [holding for holding in portfolio_dict if holding["ticker"] == t]
 
-        if curr_holding:
-          doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
+		if curr_holding:doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
 
-    except Exception as e:
-        return f"An Error Occurred: {e}"
+	except Exception as e:
+		return f"An Error Occurred: {e}"
 
-    try:
-        if s:
-          data = validate_ticker(t)["bestMatches"][0]
-          n_data = {}
-          n_data["ticker"] = data["1. symbol"]
-          n_data["name"] = data["2. name"]
-          n_data["shares"] = s
+	try:
+		if s:
+			data = validate_ticker(t)["bestMatches"][0]
+			n_data = {}
+			n_data["ticker"] = data["1. symbol"]
+			n_data["name"] = data["2. name"]
+			n_data["shares"] = s
 
-    except Exception as e:
-        return f"An Error Occurred: {e}"
+	except Exception as e:
+		return f"An Error Occurred: {e}"
 
-    try:
-        if s:
-          doc_ref = users_portfolios_ref.document(localId)
-          doc_ref.update({'portfolio': firestore.ArrayUnion([n_data])})
-          return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
+	try:
+		if s:
+			doc_ref = users_portfolios_ref.document(localId)
+			doc_ref.update({'portfolio': firestore.ArrayUnion([n_data])})
+			return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
 
-    except Exception as e:
-        return f"An Error Occurred: {e}"
+	except Exception as e:
+		return f"An Error Occurred: {e}"
+
 
 # ENDPOINT
 @login_bp.route('/portfolio/<localId>', methods=['GET'])
@@ -149,19 +212,8 @@ def get_user_portfolio(localId):
     except Exception as e:
         return f"An Error Occurred: {e}"
 
-# HELPER
-def validate_ticker(ticker):
-  try:
-      # ticker = request.get_json()['ticker']
-      response = requests.get(
-          AA_URL + f'apikey={AA_KEY}&function=SYMBOL_SEARCH&keywords={ticker}'
-      )
-      data = json.loads(response.content.decode('utf-8'))
-      return data
-  except requests.exceptions.RequestException as e:
-      return(e)
 
-# HELPER
+# ENDPOINT
 @login_bp.route('/portfolio/<localId>/tickers', methods=['GET'])
 @check_token
 def get_tickers(localId):
@@ -194,79 +246,29 @@ def get_tickers(localId):
     except requests.exceptions.RequestException as e:
         return(e)
 
-# HELPER
-def verify_ticker(ticker):
-    try:
-        response = requests.get(
-            AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
-        )
-        data = json.loads(response.content.decode('utf-8'))
-        print(data)
-        return data["Global Quote"]
-    except requests.exceptions.RequestException as e:
-        return(e)
 
 # ENDPOINT
 @login_bp.route('/sentiments', methods=['POST'])
 @check_token
 def read_positions():
-    request_body = request.get_json()
-    portfolio = request_body["portfolio"]
-    print(portfolio)
-    num_holdings = len(portfolio)
+	request_body = request.get_json()
+	portfolio = request_body["portfolio"]
+	print(portfolio)
+	num_holdings = len(portfolio)
 
-    positions = []
-    for holding in portfolio:
-      print(holding)
-      holding_sentiment = read_position(holding["name"],holding["ticker"])
-      if isinstance(holding_sentiment, str):
-        break
-      # print(holding_sentiment)
-      positions.append(holding_sentiment)
+	positions = []
+	for holding in portfolio:
+		print(holding)
+		holding_sentiment = read_position(holding["name"],holding["ticker"])
+		if isinstance(holding_sentiment, str):
+			break
 
-    if len(positions) != num_holdings:
-      return jsonify({"message": "error in finding sentiments"}), 400
+		positions.append(holding_sentiment)
 
-    return jsonify({"portfolio": positions}), 200
+	if len(positions) != num_holdings:
+		return jsonify({"message": "error in finding sentiments"}), 400
 
-# HELPER
-def read_position(stock, ticker):
-    # stock = "Netflix"
-    # ticker = "NFLX"
-    articles = 7
-    today = date.today().strftime('%Y%m%d')
-    bespoke_id = today + "_" + ticker
-
-    try:
-        doc_ref = positions_ref.document(bespoke_id)
-        doc = doc_ref.get()
-        if doc.exists:
-            print("doc does exist")
-            return doc.to_dict()
-        else:
-            print(f"{ticker} does not exist, so we will make it")
-            response = create_position(stock, ticker, articles, today)
-            # print(response)
-            if response["status_code"] == 200:
-                new_doc = positions_ref.document(bespoke_id).get()
-                return new_doc.to_dict()
-
-    except Exception as e:
-        return f"read_position Error Occurred: {e}"
-
-#  HELPER
-def create_position(stock, ticker, articles, today):
-    try:
-        print("in create_position")
-        position = get_position_sentiment(stock, ticker, articles)
-        # print(position)
-        bespoke_id = today + "_" + ticker
-        # id = position['']
-        # position_ref.document(id).set(request.json)
-        positions_ref.document(bespoke_id).set(position)
-        return {"success": True, "status_code": 200}
-    except Exception as e:
-        return f"create_position Error Occurred: {e}"
+	return jsonify({"portfolio": positions}), 200
 
 
 # https://medium.com/@nschairer/flask-api-authentication-with-firebase-9affc7b64715
@@ -293,6 +295,7 @@ def signup():
         return {'message': 'Successful registration, please navigate to the Login page!', 'user_id': f'{user.uid}'}, 200
     except:
         return {'message': 'Error creating user'}, 400
+
 
 # ENDPOINT
 @login_bp.route('/login', methods=['POST'])
