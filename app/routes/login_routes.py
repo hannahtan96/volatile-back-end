@@ -94,9 +94,16 @@ def verify_ticker(ticker):
 			AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
 		)
 
-		print(response)
-		data = json.loads(response.content.decode('utf-8'))
-		print(data)
+		if response.status_code == 200:
+			data = response.json()
+		elif response.status_code == 429:
+			return 'Quote limit reached. Wait a minute and rerun.'
+
+		if not data.get("Global Quote"):
+			return 'Quote limited reached. Wait a minute and rerun.'
+
+		# data = json.loads(response.content.decode('utf-8'))
+
 		return data["Global Quote"]
 	except requests.exceptions.RequestException as e:
 		return(e)
@@ -235,6 +242,8 @@ def get_tickers(localId):
 
 				data = verify_ticker(holding["ticker"])
 				# ["Global Quote"]
+				if isinstance(data, str):
+					return jsonify({'error': data})
 				data["11. shares"] = holding["shares"]
 				data["13. name"] = holding["name"]
 				return_arr.append(data)
