@@ -117,6 +117,17 @@ def validate_ticker(ticker):
 
 
 # ENDPOINT
+@login_bp.route('/ticker', methods=['POST'])
+@check_token
+def validate_ticker_ep():
+	request_body = request.get_json()
+	ticker = request_body["data"]["ticker"]
+
+	r = validate_ticker(ticker)
+	return jsonify({"tickers": r}), 200
+
+
+# ENDPOINT
 @login_bp.route('/portfolio/new', methods=['POST'])
 @check_token
 def add_user_portfolio():
