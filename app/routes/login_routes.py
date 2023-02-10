@@ -11,8 +11,6 @@ from flask_cors import CORS
 from datetime import date
 from .nyt_routes import get_position_sentiment
 
-# from .nyt_routes import get_position_sentiment
-
 # Connect to firebase
 cred = credentials.Certificate(os.path.abspath(os.path.dirname(__file__)) + '/fbAdminConfig.json')
 firebase = firebase_admin.initialize_app(cred)
@@ -23,8 +21,10 @@ positions_ref = db.collection("positions")
 users_portfolios_ref = db.collection("users")
 
 AA_KEY = os.environ.get("ALPHA_ADVANTAGE_API_KEY")
-AA_URL = 'https://www.alphavantage.co/query?'
+AA_URL = "https://www.alphavantage.co/query?"
 
+FH_KEY = os.environ.get("FH_API_KEY")
+FH_URL = "https://finnhub.io/api/v1"
 
 login_bp = Blueprint("login_bp", __name__, url_prefix='/api')
 
@@ -64,7 +64,7 @@ def read_position(stock, ticker):
 		else:
 			print(f"{ticker} does not exist, so we will make it")
 			response = create_position(stock, ticker, articles, today)
-			# print(response)
+
 			if response["status_code"] == 200:
 				new_doc = positions_ref.document(bespoke_id).get()
 				return new_doc.to_dict()
@@ -77,10 +77,7 @@ def create_position(stock, ticker, articles, today):
     try:
         print("in create_position")
         position = get_position_sentiment(stock, ticker, articles)
-        # print(position)
         bespoke_id = today + "_" + ticker
-        # id = position['']
-        # position_ref.document(id).set(request.json)
         positions_ref.document(bespoke_id).set(position)
         return {"success": True, "status_code": 200}
     except Exception as e:
@@ -91,31 +88,29 @@ def verify_ticker(ticker):
 	print(ticker)
 	try:
 		response = requests.get(
-			AA_URL + f'apikey={AA_KEY}&function=GLOBAL_QUOTE&symbol={ticker}'
+			FH_URL + f'/quote?symbol={ticker}&token={FH_KEY}'
 		)
 
 		if response.status_code == 200:
 			data = response.json()
-		elif response.status_code == 429:
+		else:
 			return 'Quote limit reached. Wait a minute and rerun.'
 
-		if not data.get("Global Quote"):
+		if not data:
 			return 'Quote limited reached. Wait a minute and rerun.'
 
-		# data = json.loads(response.content.decode('utf-8'))
-
-		return data["Global Quote"]
+		return data
 	except requests.exceptions.RequestException as e:
 		return(e)
 
 # HELPER
 def validate_ticker(ticker):
 	try:
-		# ticker = request.get_json()['ticker']
 		response = requests.get(
-			AA_URL + f'apikey={AA_KEY}&function=SYMBOL_SEARCH&keywords={ticker}'
+			FH_URL + f'/search?q={ticker}&token={FH_KEY}'
 		)
-		data = json.loads(response.content.decode('utf-8'))
+
+		data = response.json()
 		return data
 	except requests.exceptions.RequestException as e:
 		return(e)
@@ -131,20 +126,19 @@ def add_user_portfolio():
 	email = request_body['email']
 	localId = request_body['localId']
 	portfolio = request_body['portfolio']
-	print(portfolio)
 
-	if email is None or email is None or localId is None or portfolio is None:
+	if user is None or email is None or localId is None or portfolio is None:
 		return {'message': 'Error - missing user portfolio data'}, 400
 
 	portfolio_detail = []
 	error_detail = []
 	for holding in portfolio:
 		try:
-			data = validate_ticker(holding["ticker"])["bestMatches"][0]
-			print(data)
+			data = validate_ticker(holding["ticker"])["result"][0]
+
 			n_data = {}
-			n_data["ticker"] = data["1. symbol"]
-			n_data["name"] = data["2. name"]
+			n_data["ticker"] = data["symbol"]
+			n_data["name"] = data["description"]
 			n_data["shares"] = int(holding["shares"])
 			portfolio_detail.append(n_data)
 		except:
@@ -168,8 +162,6 @@ def add_user_portfolio():
 @check_token
 def edit_user_portfolio(localId):
 	request_body = request.get_json()
-	# print(request_body)
-
 	t = request_body["data"]["ticker"]
 	s = int(request_body["data"]["shares"])
 
@@ -187,10 +179,10 @@ def edit_user_portfolio(localId):
 
 	try:
 		if s:
-			data = validate_ticker(t)["bestMatches"][0]
+			data = validate_ticker(t)["result"][0]
 			n_data = {}
-			n_data["ticker"] = data["1. symbol"]
-			n_data["name"] = data["2. name"]
+			n_data["ticker"] = data["symbol"]
+			n_data["name"] = data["description"]
 			n_data["shares"] = s
 
 	except Exception as e:
@@ -241,16 +233,17 @@ def get_tickers(localId):
 				print(holding)
 
 				data = verify_ticker(holding["ticker"])
-				# ["Global Quote"]
+
 				if isinstance(data, str):
 					return jsonify({'error': data})
-				data["11. shares"] = holding["shares"]
-				data["13. name"] = holding["name"]
+				data["symbol"] = holding["ticker"]
+				data["shares"] = holding["shares"]
+				data["name"] = holding["name"]
 				return_arr.append(data)
 
-			total_weight = sum([(float(w['02. open'])*w['11. shares']) for w in return_arr])
+			total_weight = sum([(float(w['o'])*w['shares']) for w in return_arr])
 			for holding in return_arr:
-				holding["12. proportion"] = ((float(holding["02. open"])*holding["11. shares"]) / total_weight)
+				holding["proportion"] = ((float(holding["o"])*holding["shares"]) / total_weight)
 
 			return jsonify({"weightings": return_arr}), 200
 		else:
@@ -289,8 +282,6 @@ def read_positions():
 @login_bp.route('/signup', methods=['POST'])
 def signup():
     request_body = request.get_json()
-    first_name = request_body['firstName']
-    last_name = request_body['lastName']
     username = request_body['username']
     email = request_body['email']
     password = request_body['password']
@@ -313,15 +304,15 @@ def signup():
 # ENDPOINT
 @login_bp.route('/login', methods=['POST'])
 def login():
-    request_body = request.get_json()
-    email = request_body['email']
-    password = request_body['password']
+	request_body = request.get_json()
+	email = request_body['email']
+	password = request_body['password']
 
-    try:
-        user = pb.auth().sign_in_with_email_and_password(email, password)
-        # jwt = user['idToken']
-        # return jsonify({'user': user, 'accessToken': jwt}), 200
-        return user, 200
+	try:
+		user = pb.auth().sign_in_with_email_and_password(email, password)
+		# jwt = user['idToken']
+		# return jsonify({'user': user, 'accessToken': jwt}), 200
+		return user, 200
 
-    except:
-        return {'message': 'Incorrect email or password.'}, 400
+	except:
+			return {'message': 'Incorrect email or password.'}, 400

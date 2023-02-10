@@ -45,14 +45,15 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 	for elem in s_list:
 		if remove_beg_end_punctuation(elem) and remove_beg_end_punctuation(elem).upper() not in BANNEDWORDS:
 			new_s_list.append(elem)
-	s_query = ' '.join(new_s_list)
+	s = ' '.join(new_s_list)
+	s_query = s + "|" + new_s_list[0]
 	print(s_query)
 
 	stock_or_ticker = s_query + "|" + ticker_query
 	# articles = int(request.get_json()["articles"])
 
 	today = date.today().strftime('%Y%m%d')
-	today_less_90 = (date.today() - timedelta(days=90)).strftime('%Y%m%d')
+	today_less_180 = (date.today() - timedelta(days=180)).strftime('%Y%m%d')
 
 	headliners, all_sentiments, sentiment_keys, freq_hash = [], [], set(), {}
 	flag = False
@@ -60,7 +61,7 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 	page = 1
 	while not flag:
 
-		params={"api-key": NYT_KEY, "q": s_query, "page": page, "news_desk": ("Business","Financial"), "begin_date": today_less_90, "end_date": today, "sort": "relevance"}
+		params={"api-key": NYT_KEY, "q": s, "page": page, "news_desk": ("Business","Financial"), "begin_date": today_less_180, "sort": "relevance"}
 		response = requests.get(
 			NYT_URL,
 			params=params
@@ -72,25 +73,19 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 			flag = True
 			break
 
-		if len(data['response']['docs']) == 0:
+		if not data or len(data['response']['docs']) == 0:
 			flag = True
 			break
 
 		if data['response']['docs']:
-			print(79)
+			print(data['response']['docs'])
 			for art in data['response']['docs']:
 
 				if re.search(stock_or_ticker.upper(), art['headline']['main'].upper()) or re.search(stock_or_ticker, art['abstract'].upper()):
 					article = {
 						"abstract": art['abstract'],
-						# "web_url": art['web_url'],
-						# "snippet": art['snippet'],
-						# "lead_paragraph": art['lead_paragraph'],
 						"headline": art['headline']['main'],
-						# "print_headline": art['headline']['print_headline'],
-						# "keywords": [x["value"] for x in art['keywords']],
-						# "pub_date": art['pub_date'][:10],
-						# "word_count": art['word_count']
+						"keywords": [x["value"] for x in art['keywords']],
 					}
 					print(90)
 					headliner, sentiments = get_sentiment(article['headline'])
