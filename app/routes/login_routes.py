@@ -14,9 +14,9 @@ from .nyt_routes import get_position_sentiment
 # from .nyt_routes import get_position_sentiment
 
 # Connect to firebase
-cred = credentials.Certificate('./fbAdminConfig.json')
+cred = credentials.Certificate(os.path.abspath(os.path.dirname(__file__)) + '/fbAdminConfig.json')
 firebase = firebase_admin.initialize_app(cred)
-pb = pyrebase.initialize_app(json.load(open('./fbConfig.json')))
+pb = pyrebase.initialize_app(json.load(open(os.path.abspath(os.path.dirname(__file__)) + '/fbConfig.json')))
 
 db = firestore.client()
 positions_ref = db.collection("positions")
