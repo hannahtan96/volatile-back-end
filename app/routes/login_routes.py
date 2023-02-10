@@ -134,7 +134,9 @@ def add_user_portfolio():
 	error_detail = []
 	for holding in portfolio:
 		try:
-			data = validate_ticker(holding["ticker"])["result"][0]
+			raw_data = validate_ticker(holding["ticker"])["result"][0]
+			raw_data.sort(key=lambda x: len(x["symbol"]))
+			data = raw_data[0]
 
 			n_data = {}
 			n_data["ticker"] = data["symbol"]
@@ -147,7 +149,7 @@ def add_user_portfolio():
 	request_body["portfolio"] = portfolio_detail
 
 	if error_detail:
-		return jsonify({"non-existent tickers": ", ".join(error_detail)})
+		return jsonify({"non-existent tickers": ", ".join(error_detail)}), 400
 
 	try:
 		print("in add_user_portfolio")
@@ -172,21 +174,28 @@ def edit_user_portfolio(localId):
 		portfolio_dict = doc.to_dict()["portfolio"]
 		curr_holding = [holding for holding in portfolio_dict if holding["ticker"] == t]
 
-		if curr_holding:doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
+		if curr_holding:
+			doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
 
 	except Exception as e:
 		return f"An Error Occurred: {e}"
 
+	error_detail = []
 	try:
 		if s:
-			data = validate_ticker(t)["result"][0]
+			raw_data = validate_ticker(t)["result"]
+			raw_data.sort(key=lambda x: len(x["symbol"]))
+			data = raw_data[0]
+
 			n_data = {}
 			n_data["ticker"] = data["symbol"]
 			n_data["name"] = data["description"]
 			n_data["shares"] = s
+	except:
+		error_detail.append(t)
 
-	except Exception as e:
-		return f"An Error Occurred: {e}"
+	if error_detail:
+		return jsonify({"non-existent tickers": ", ".join(error_detail)}), 400
 
 	try:
 		if s:

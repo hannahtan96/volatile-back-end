@@ -61,7 +61,7 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 	page = 1
 	while not flag:
 
-		params={"api-key": NYT_KEY, "q": s, "page": page, "news_desk": ("Business","Financial"), "begin_date": today_less_180, "sort": "relevance"}
+		params={"api-key": NYT_KEY, "q": s, "page": page, "news_desk": ("Business","Financial","Sunday Business","Small Business","Personal Investing","DealBook","Opinion","OpEd","Society",""), "begin_date": today_less_180, "sort": "relevance"}
 		response = requests.get(
 			NYT_URL,
 			params=params
@@ -81,7 +81,7 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 			print(data['response']['docs'])
 			for art in data['response']['docs']:
 
-				if re.search(stock_or_ticker.upper(), art['headline']['main'].upper()) or re.search(stock_or_ticker, art['abstract'].upper()):
+				if re.search(stock_or_ticker, art['headline']['main']) or re.search(stock_or_ticker, art['abstract']):
 					article = {
 						"abstract": art['abstract'],
 						"headline": art['headline']['main'],
@@ -122,7 +122,11 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 
 		page += 1
 
-	score = mean([SCORE[h["score_tag"]] for h in headliners])
+	if headliners:
+		score = mean([SCORE[h["score_tag"]] for h in headliners])
+	else:
+		score = -1
+
 	output = {"ticker":ticker_query,"sentiment_score":score,"headliners": headliners,"sentiments":all_sentiments,"words":freq_hash,"date":today}
 
 	return output
