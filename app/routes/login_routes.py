@@ -93,11 +93,14 @@ def verify_ticker(ticker):
 
 		if response.status_code == 200:
 			data = response.json()
+		elif response.status_code == 403:
+			return f"No stock with {ticker} ticker. Try again."
 		else:
-			return 'Quote limit reached. Wait a minute and rerun.'
+			print(response.status_code)
+			return "Quota limit reached. Wait a minute and rerun."
 
 		if not data:
-			return 'Quote limited reached. Wait a minute and rerun.'
+			return "Error. Wait a minute and rerun."
 
 		return data
 	except requests.exceptions.RequestException as e:
@@ -105,13 +108,22 @@ def verify_ticker(ticker):
 
 # HELPER
 def validate_ticker(ticker):
+	print(ticker)
 	try:
 		response = requests.get(
 			FH_URL + f'/search?q={ticker}&token={FH_KEY}'
 		)
 
 		data = response.json()
-		return data
+		raw_data = data["result"]
+		if not raw_data:
+			return {}
+		raw_data.sort(key=lambda x: len(x["symbol"]))
+		final_data = raw_data[0]
+
+		if ticker not in final_data["symbol"]:
+			return {}
+		return final_data
 	except requests.exceptions.RequestException as e:
 		return(e)
 
@@ -126,6 +138,7 @@ def add_user_portfolio():
 	email = request_body['email']
 	localId = request_body['localId']
 	portfolio = request_body['portfolio']
+	print(portfolio)
 
 	if user is None or email is None or localId is None or portfolio is None:
 		return {'message': 'Error - missing user portfolio data'}, 400
@@ -133,23 +146,22 @@ def add_user_portfolio():
 	portfolio_detail = []
 	error_detail = []
 	for holding in portfolio:
-		try:
-			raw_data = validate_ticker(holding["ticker"])["result"][0]
-			raw_data.sort(key=lambda x: len(x["symbol"]))
-			data = raw_data[0]
 
+		data = validate_ticker(holding["ticker"].upper())
+		print(data)
+		if data:
 			n_data = {}
 			n_data["ticker"] = data["symbol"]
 			n_data["name"] = data["description"]
 			n_data["shares"] = int(holding["shares"])
 			portfolio_detail.append(n_data)
-		except:
+		else:
 			error_detail.append(holding["ticker"])
 
 	request_body["portfolio"] = portfolio_detail
 
 	if error_detail:
-		return jsonify({"non-existent tickers": ", ".join(error_detail)}), 400
+		return jsonify({"non-existent tickers": ", ".join(error_detail)})
 
 	try:
 		print("in add_user_portfolio")
@@ -164,47 +176,53 @@ def add_user_portfolio():
 @check_token
 def edit_user_portfolio(localId):
 	request_body = request.get_json()
-	t = request_body["data"]["ticker"]
+	email = request_body["data"]["email"]
+	user = request_body["data"]["user"]
+	t = request_body["data"]["ticker"].upper()
+	print(t)
 	s = int(request_body["data"]["shares"])
 
 	try:
+
 		doc_ref = users_portfolios_ref.document(localId)
+		if not doc_ref:
+			users_portfolios_ref.document(localId).set({
+				"user": user,
+				"email": email,
+				"localId": localId,
+				"portfolio": []
+			})
+
 		doc = doc_ref.get()
-
 		portfolio_dict = doc.to_dict()["portfolio"]
-		curr_holding = [holding for holding in portfolio_dict if holding["ticker"] == t]
 
-		if curr_holding:
-			doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
+		if portfolio_dict:
+			curr_holding = [holding for holding in portfolio_dict if holding["ticker"] == t]
+
+			if curr_holding:
+				doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
 
 	except Exception as e:
 		return f"An Error Occurred: {e}"
 
-	error_detail = []
-	try:
-		if s:
-			raw_data = validate_ticker(t)["result"]
-			raw_data.sort(key=lambda x: len(x["symbol"]))
-			data = raw_data[0]
+	if s:
+		try:
+			data = validate_ticker(t)
+			if not data:
+				return jsonify({"non-existent ticker": t})
 
 			n_data = {}
 			n_data["ticker"] = data["symbol"]
 			n_data["name"] = data["description"]
 			n_data["shares"] = s
-	except:
-		error_detail.append(t)
 
-	if error_detail:
-		return jsonify({"non-existent tickers": ", ".join(error_detail)}), 400
-
-	try:
-		if s:
 			doc_ref = users_portfolios_ref.document(localId)
 			doc_ref.update({'portfolio': firestore.ArrayUnion([n_data])})
-			return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
 
-	except Exception as e:
-		return f"An Error Occurred: {e}"
+		except Exception as e:
+			return f"An Error Occurred: {e}"
+
+	return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
 
 
 # ENDPOINT
@@ -239,12 +257,11 @@ def get_tickers(localId):
 			portfolio_dict = doc.to_dict()["portfolio"]
 
 			for holding in portfolio_dict:
-				print(holding)
-
 				data = verify_ticker(holding["ticker"])
 
 				if isinstance(data, str):
 					return jsonify({'error': data})
+
 				data["symbol"] = holding["ticker"]
 				data["shares"] = holding["shares"]
 				data["name"] = holding["name"]
