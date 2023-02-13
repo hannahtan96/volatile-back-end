@@ -164,7 +164,8 @@ def add_user_portfolio():
 	try:
 		print("in add_user_portfolio")
 		users_portfolios_ref.document(localId).set(request_body)
-		return redirect(url_for('login_bp.get_user_portfolio', localId=localId, _scheme="https"))
+		return jsonify(request_body), 200
+		# return redirect(url_for('login_bp.get_user_portfolio', localId=localId ))
 	except Exception as e:
 		return f"An Error Occurred: {e}"
 
@@ -221,7 +222,10 @@ def edit_user_portfolio(localId):
 		except Exception as e:
 			return f"An Error Occurred in row 221: {e}"
 
-	return redirect(url_for('login_bp.get_user_portfolio', localId=localId, _scheme="https"))
+	doc_ref = users_portfolios_ref.document(localId)
+	doc = doc_ref.get()
+	return {"portfolio": doc.to_dict()["portfolio"]}
+	# return redirect(url_for('login_bp.get_user_portfolio', localId=localId ))
 
 
 # ENDPOINT
