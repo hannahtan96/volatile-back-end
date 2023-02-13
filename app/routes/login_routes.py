@@ -32,7 +32,6 @@ login_bp = Blueprint("login_bp", __name__, url_prefix='/api')
 def check_token(f):
     @wraps(f)
     def wrap(*args, **kwargs):
-        # print(request.headers)
         idToken = request.headers.get('Authorization')
         if not idToken:
             return {'message': 'No token provided'}, 400
@@ -138,7 +137,6 @@ def add_user_portfolio():
 	email = request_body['email']
 	localId = request_body['localId']
 	portfolio = request_body['portfolio']
-	print(portfolio)
 
 	if user is None or email is None or localId is None or portfolio is None:
 		return {'message': 'Error - missing user portfolio data'}, 400
@@ -148,7 +146,7 @@ def add_user_portfolio():
 	for holding in portfolio:
 
 		data = validate_ticker(holding["ticker"].upper())
-		print(data)
+
 		if data:
 			n_data = {}
 			n_data["ticker"] = data["symbol"]
@@ -156,7 +154,7 @@ def add_user_portfolio():
 			n_data["shares"] = int(holding["shares"])
 			portfolio_detail.append(n_data)
 		else:
-			error_detail.append(holding["ticker"])
+			error_detail.append(holding["ticker"].upper())
 
 	request_body["portfolio"] = portfolio_detail
 
@@ -179,19 +177,20 @@ def edit_user_portfolio(localId):
 	email = request_body["data"]["email"]
 	user = request_body["data"]["user"]
 	t = request_body["data"]["ticker"].upper()
-	print(t)
 	s = int(request_body["data"]["shares"])
 
 	try:
-
 		doc_ref = users_portfolios_ref.document(localId)
-		if not doc_ref:
+
+		if not doc_ref.get().to_dict():
 			users_portfolios_ref.document(localId).set({
 				"user": user,
 				"email": email,
 				"localId": localId,
-				"portfolio": []
+				"portfolio": [{"ticker": t}]
 			})
+
+			doc_ref = users_portfolios_ref.document(localId)
 
 		doc = doc_ref.get()
 		portfolio_dict = doc.to_dict()["portfolio"]
@@ -203,7 +202,7 @@ def edit_user_portfolio(localId):
 				doc_ref.update({'portfolio': firestore.ArrayRemove(curr_holding)})
 
 	except Exception as e:
-		return f"An Error Occurred: {e}"
+		return f"An Error Occurred in row 204: {e}"
 
 	if s:
 		try:
@@ -220,7 +219,7 @@ def edit_user_portfolio(localId):
 			doc_ref.update({'portfolio': firestore.ArrayUnion([n_data])})
 
 		except Exception as e:
-			return f"An Error Occurred: {e}"
+			return f"An Error Occurred in row 221: {e}"
 
 	return redirect(url_for('login_bp.get_user_portfolio', localId=localId))
 
@@ -239,7 +238,7 @@ def get_user_portfolio(localId):
             return jsonify({}), 200
 
     except Exception as e:
-        return f"An Error Occurred: {e}"
+        return f"An Error Occurred in row 240: {e}"
 
 
 # ENDPOINT
@@ -252,7 +251,6 @@ def get_tickers(localId):
 		doc = doc_ref.get()
 		if doc.exists:
 			print("doc does exist")
-
 			return_arr = []
 			portfolio_dict = doc.to_dict()["portfolio"]
 
@@ -285,7 +283,6 @@ def get_tickers(localId):
 def read_positions():
 	request_body = request.get_json()
 	portfolio = request_body["portfolio"]
-	print(portfolio)
 	num_holdings = len(portfolio)
 
 	positions = []
@@ -336,8 +333,6 @@ def login():
 
 	try:
 		user = pb.auth().sign_in_with_email_and_password(email, password)
-		# jwt = user['idToken']
-		# return jsonify({'user': user, 'accessToken': jwt}), 200
 		return user, 200
 
 	except:

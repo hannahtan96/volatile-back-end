@@ -99,7 +99,6 @@ def return_sentiment(text):
 # @sentiment_bp.route('', methods=['GET'])
 def get_sentiment(text_input):
     print(f"in text_input: {text_input}")
-    # text = request.get_json()["text"]
     params = {
         'key': SENTIMENT_KEY,
         'txt': text_input,

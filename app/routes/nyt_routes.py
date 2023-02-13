@@ -47,17 +47,14 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 			new_s_list.append(elem)
 	s = ' '.join(new_s_list)
 	s_query = s + "|" + new_s_list[0]
-	print(s_query)
 
 	stock_or_ticker = s_query + "|" + ticker_query
-	# articles = int(request.get_json()["articles"])
 
 	today = date.today().strftime('%Y%m%d')
 	today_less_180 = (date.today() - timedelta(days=180)).strftime('%Y%m%d')
 
 	headliners, all_sentiments, sentiment_keys, freq_hash = [], [], set(), {}
 	flag = False
-	print(s_query)
 	page = 1
 	while not flag:
 
@@ -78,7 +75,6 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 			break
 
 		if data['response']['docs']:
-			print(data['response']['docs'])
 			for art in data['response']['docs']:
 
 				if re.search(stock_or_ticker, art['headline']['main']) or re.search(stock_or_ticker, art['abstract']):
@@ -87,9 +83,8 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 						"headline": art['headline']['main'],
 						"keywords": [x["value"] for x in art['keywords']],
 					}
-					print(90)
+
 					headliner, sentiments = get_sentiment(article['headline'])
-					print(92)
 					if headliner:
 
 						headliners.append(headliner)
@@ -130,5 +125,3 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 	output = {"ticker":ticker_query,"sentiment_score":score,"headliners": headliners,"sentiments":all_sentiments,"words":freq_hash,"date":today}
 
 	return output
-
-# print(get_position_sentiment('Amazon','AMZN',10))
