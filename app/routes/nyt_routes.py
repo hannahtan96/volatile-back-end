@@ -17,7 +17,7 @@ nyt_bp = Blueprint("nyt_bp", __name__, url_prefix='/nyt_api')
 NYT_KEY = os.environ.get("NYT_API_KEY")
 NYT_URL = 'https://api.nytimes.com/svc/search/v2/articlesearch.json'
 
-BANNEDWORDS = {'THE','AN','A','INC','CORPORATION','CORP','CO','LLC'}
+BANNEDWORDS = {'THE','AN','A','INC','COMPANY','LP','CORPORATION','CORP','CO','LLC'}
 
 SCORE = {
 	"P+": 1,
@@ -46,7 +46,10 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 		if remove_beg_end_punctuation(elem) and remove_beg_end_punctuation(elem).upper() not in BANNEDWORDS:
 			new_s_list.append(elem)
 	s = ' '.join(new_s_list)
-	s_query = s + "|" + new_s_list[0]
+	if len(new_s_list) > 1:
+		s_query = s + "|" + new_s_list[0]
+	else:
+		s_query = s
 
 	stock_or_ticker = s_query + "|" + ticker_query
 
@@ -58,7 +61,7 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 	page = 1
 	while not flag:
 
-		params={"api-key": NYT_KEY, "q": s, "page": page, "news_desk": ("Business","Financial","Sunday Business","Small Business","Personal Investing","DealBook","Opinion","OpEd","Society",""), "begin_date": today_less_180, "sort": "relevance"}
+		params={"api-key": NYT_KEY, "q": s, "page": page, "news_desk": ("Business","Financial","Sunday Business","Small Business","Personal Investing","DealBook","Opinion","OpEd"), "begin_date": today_less_180, "sort": "relevance"}
 		response = requests.get(
 			NYT_URL,
 			params=params
@@ -70,20 +73,21 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 			flag = True
 			break
 
-		if not data or len(data['response']['docs']) == 0:
+		if len(data['response']['docs']) == 0:
 			flag = True
 			break
-
+		print(76)
 		if data['response']['docs']:
 			for art in data['response']['docs']:
-
-				if re.search(stock_or_ticker, art['headline']['main']) or re.search(stock_or_ticker, art['abstract']):
+				print(stock_or_ticker)
+				if re.search(stock_or_ticker, art['headline']['main'].upper()) or re.search(stock_or_ticker, art['abstract'].upper()):
 					article = {
 						"abstract": art['abstract'],
 						"headline": art['headline']['main'],
+						"lead_paragraph": art['lead_paragraph'],
 						"keywords": [x["value"] for x in art['keywords']],
 					}
-
+					print(86)
 					headliner, sentiments = get_sentiment(article['headline'])
 					if headliner:
 
@@ -95,7 +99,9 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 								all_sentiments.append(sentiment)
 
 						abstract_strings = article["abstract"].split()
-						for str in abstract_strings:
+						lead_para_strings = article["lead_paragraph"].split()
+						all_strings = abstract_strings + lead_para_strings
+						for str in all_strings:
 							normalized_str = remove_beg_end_punctuation(str).upper()  # remove punctation one more time
 							if len(normalized_str) < 1 or normalized_str in BANNEDWORDS:
 								continue
