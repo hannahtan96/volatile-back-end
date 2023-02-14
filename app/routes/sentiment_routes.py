@@ -2,6 +2,7 @@ import os
 import requests
 import re
 import json
+import fnmatch
 from datetime import date, timedelta
 from flask import Blueprint, request, jsonify, json
 from dotenv import load_dotenv
@@ -30,13 +31,15 @@ def remove_beg_end_punctuation(s):
     while j <= len(s)-1 and not s[j].isalnum():
         j += 1
 
-    return s[j:][::-1]
+    new_word = s[j:][::-1]
+    last_two_letters = new_word[len(new_word)-2:]
+    if last_two_letters == "’s" or last_two_letters[0] == '@':
+        return new_word[:len(new_word)-2]
+    return new_word
 
 
 # @sentiment_bp.route('/flatten', methods=['GET'])
 def flatten_json(input):
-    print(f'in flatten_json')
-
     flattened_json = flatten(input)
     texts = [key for key, val in flattened_json.items() if key.endswith('text')]
     forms = [key for key, val in flattened_json.items() if key.endswith('form')]
@@ -81,8 +84,6 @@ def flatten_json(input):
 
 # @sentiment_bp.route('/flatten', methods=['GET'])
 def return_sentiment(text):
-    print(f'in return_sentiment')
-
     if text["agreement"] == "DISAGREEMENT":
         return False
 
@@ -98,7 +99,6 @@ def return_sentiment(text):
 
 # @sentiment_bp.route('', methods=['GET'])
 def get_sentiment(text_input):
-    print(f"in text_input: {text_input}")
     params = {
         'key': SENTIMENT_KEY,
         'txt': text_input,
@@ -113,7 +113,7 @@ def get_sentiment(text_input):
         )
 
     except requests.exceptions.RequestException as e:
-        print(e)
+        return (e)
 
     text = response.json()
 

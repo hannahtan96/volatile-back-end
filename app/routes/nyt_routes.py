@@ -39,12 +39,13 @@ SCORE_DETAIL = {
 
 
 def get_position_sentiment(stock_query, ticker_query, articles):
-	print(f"in get_position_sentiment for {ticker_query}")
 	s_list = stock_query.split()
 	new_s_list = []
+	title_set = set()
 	for elem in s_list:
 		if remove_beg_end_punctuation(elem) and remove_beg_end_punctuation(elem).upper() not in BANNEDWORDS:
 			new_s_list.append(elem)
+			title_set.add(elem.upper())
 	s = ' '.join(new_s_list)
 	if len(new_s_list) > 1:
 		s_query = s + "|" + new_s_list[0]
@@ -76,10 +77,10 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 		if len(data['response']['docs']) == 0:
 			flag = True
 			break
-		print(76)
+
 		if data['response']['docs']:
 			for art in data['response']['docs']:
-				print(stock_or_ticker)
+
 				if re.search(stock_or_ticker, art['headline']['main'].upper()) or re.search(stock_or_ticker, art['abstract'].upper()):
 					article = {
 						"abstract": art['abstract'],
@@ -87,7 +88,7 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 						"lead_paragraph": art['lead_paragraph'],
 						"keywords": [x["value"] for x in art['keywords']],
 					}
-					print(86)
+
 					headliner, sentiments = get_sentiment(article['headline'])
 					if headliner:
 
@@ -103,14 +104,13 @@ def get_position_sentiment(stock_query, ticker_query, articles):
 						all_strings = abstract_strings + lead_para_strings
 						for str in all_strings:
 							normalized_str = remove_beg_end_punctuation(str).upper()  # remove punctation one more time
-							if len(normalized_str) < 1 or normalized_str in BANNEDWORDS:
+							if len(normalized_str) < 1 or normalized_str in BANNEDWORDS or normalized_str in title_set:
 								continue
 
 							if normalized_str not in freq_hash:
 								freq_hash[normalized_str] = 0
 							freq_hash[normalized_str] += 1
 
-						print(len(headliners))
 						if len(headliners) >= articles:
 							flag = True
 							break

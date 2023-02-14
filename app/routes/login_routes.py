@@ -49,7 +49,6 @@ def check_token(f):
 
 # HELPER
 def read_position(stock, ticker):
-	print(f'reading position for {stock}')
 	articles = 10
 	today = date.today().strftime('%Y%m%d')
 	bespoke_id = today + "_" + ticker
@@ -58,10 +57,8 @@ def read_position(stock, ticker):
 		doc_ref = positions_ref.document(bespoke_id)
 		doc = doc_ref.get()
 		if doc.exists:
-			print("doc does exist")
 			return doc.to_dict()
 		else:
-			print(f"{ticker} does not exist, so we will make it")
 			response = create_position(stock, ticker, articles, today)
 
 			if response["status_code"] == 200:
@@ -74,7 +71,6 @@ def read_position(stock, ticker):
 #  HELPER
 def create_position(stock, ticker, articles, today):
     try:
-        print("in create_position")
         position = get_position_sentiment(stock, ticker, articles)
         bespoke_id = today + "_" + ticker
         positions_ref.document(bespoke_id).set(position)
@@ -84,7 +80,6 @@ def create_position(stock, ticker, articles, today):
 
 # HELPER
 def verify_ticker(ticker):
-	print(ticker)
 	try:
 		response = requests.get(
 			FH_URL + f'/quote?symbol={ticker}&token={FH_KEY}'
@@ -95,7 +90,6 @@ def verify_ticker(ticker):
 		elif response.status_code == 403:
 			return f"No stock with {ticker} ticker. Try again."
 		else:
-			print(response.status_code)
 			return "Quota limit reached. Wait a minute and rerun."
 
 		if not data:
@@ -107,7 +101,6 @@ def verify_ticker(ticker):
 
 # HELPER
 def validate_ticker(ticker):
-	print(ticker)
 	try:
 		response = requests.get(
 			FH_URL + f'/search?q={ticker}&token={FH_KEY}'
@@ -131,7 +124,6 @@ def validate_ticker(ticker):
 @login_bp.route('/portfolio/new', methods=['POST'])
 @check_token
 def add_user_portfolio():
-	print('in add_user_portfolio')
 	request_body = request.get_json()
 	user = request_body['user']
 	email = request_body['email']
@@ -162,7 +154,6 @@ def add_user_portfolio():
 		return jsonify({"non-existent tickers": ", ".join(error_detail)})
 
 	try:
-		print("in add_user_portfolio")
 		users_portfolios_ref.document(localId).set(request_body)
 		return jsonify(request_body), 200
 		# return redirect(url_for('login_bp.get_user_portfolio', localId=localId ))
@@ -225,7 +216,6 @@ def edit_user_portfolio(localId):
 	doc_ref = users_portfolios_ref.document(localId)
 	doc = doc_ref.get()
 	return {"portfolio": doc.to_dict()["portfolio"]}
-	# return redirect(url_for('login_bp.get_user_portfolio', localId=localId ))
 
 
 # ENDPOINT
@@ -236,7 +226,6 @@ def get_user_portfolio(localId):
         doc_ref = users_portfolios_ref.document(localId)
         doc = doc_ref.get()
         if doc.exists:
-            print("doc does exist")
             return jsonify(doc.to_dict()), 200
         else:
             return jsonify({}), 200
@@ -249,12 +238,10 @@ def get_user_portfolio(localId):
 @login_bp.route('/portfolio/<localId>/tickers', methods=['GET'])
 @check_token
 def get_tickers(localId):
-
 	try:
 		doc_ref = users_portfolios_ref.document(localId)
 		doc = doc_ref.get()
 		if doc.exists:
-			print("doc does exist")
 			return_arr = []
 			portfolio_dict = doc.to_dict()["portfolio"]
 
@@ -291,7 +278,6 @@ def read_positions():
 
 	positions = []
 	for holding in portfolio:
-		print(holding)
 		holding_sentiment = read_position(holding["name"],holding["ticker"])
 		if isinstance(holding_sentiment, str):
 			break
@@ -340,4 +326,4 @@ def login():
 		return user, 200
 
 	except:
-			return {'message': 'Incorrect email or password.'}, 400
+		return {'message': 'Incorrect email or password.'}, 400
